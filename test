@@ -1,0 +1,379 @@
+detailed overview of the files and components needed for a chess game API backend server in actix_web using tokio:
+
+board.rs - This file will contain the data structure for the chess board. In this case, we will use a hashmap to represent the board. The hashmap will have keys representing the position on the board (e.g. "a1", "e4", "h8") and values representing the pieces on that position. The file will contain functions for initializing the board, updating the board, and getting information about the board (e.g. getting the piece at a certain position).
+
+routes.rs - This file will contain the route handlers for the API endpoints. The endpoints will include creating a new game, making a move, getting the current state of the game, and joining a websocket connection. Each endpoint will call functions in the other files to handle its specific functionality.
+
+piece.rs - This file will contain the logic for each chess piece. There will be functions for validating moves for each type of piece (e.g. validating a knight move, validating a bishop move) and functions for checking if a piece can capture another piece.
+
+move_logic.rs - This file will contain the logic for making moves on the board. There will be functions for validating moves, checking if a move is legal, and handling special moves such as castling and en passant. This file will also handle error handling for invalid moves and illegal moves.
+
+websocket.rs - This file will contain the logic for handling websocket connections. There will be functions for sending and receiving messages over the websocket connection, and functions for broadcasting updates to all connected clients when a move is made.
+
+main.rs - This file will contain the entry point for the server. It will initialize the actix_web server, set up the routes, and start the server.
+
+In terms of validation and error handling, each file will handle its own validation and error handling. For example, move validation will be done in the move_logic.rs file, and any errors or invalid moves will be handled in that file. The same goes for piece_logic.rs and board.rs.
+
+Overall, the API should be easy to read and follow, with separate files for each major component. Special moves and complex cases can be added later as needed. The websocket connection will allow for real-time updates to all connected clients, making for a more engaging and interactive user experience.
+
+We configure the app by calling the config function defined in the routes module, which sets up the API endpoints.
+
+We also pass the chess board as a shared state to the routes and websocket handlers using the data() method.
+
+main.rs:
+use actix_web::{App, HttpServer};
+use std::sync::{Arc, Mutex};
+
+mod board;
+mod routes;
+mod piece_logic;
+mod move_logic;
+mod websocket;
+
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    // Initialize the chess board as a hashmap
+    let board = Arc::new(Mutex::new(board::new_board()));
+
+    // Create a new actix_web application
+    let app = move || {
+        App::new()
+            // Set up the API endpoints
+            .configure(routes::config)
+            // Pass the chess board as a shared state to the routes and websocket handlers
+            .data(board.clone())
+    };
+
+    // Start the actix_web server
+    HttpServer::new(app)
+        .bind("127.0.0.1:8080")?
+        .run()
+        .await
+}
+We configure the app by calling the config function defined in the routes module, which sets up the API endpoints.
+board.rs:
+use std::collections::HashMap;
+
+ use crate::piece::{Piece, PieceType, Color};
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct Square {
+    pub x: u8,
+    pub y: u8,
+}
+
+#[derive(Debug)]
+pub struct Board {
+    pub squares: Square,
+    pub pieces: HashMap<Square, Piece>,
+}
+
+impl Board {
+    pub fn new() -> Board {
+        let mut pieces = HashMap::new();
+
+        // Set up white pieces
+        pieces.insert(Square { x: 0, y: 0 }, Piece::new(PieceType::Rook, Color::White));
+        pieces.insert(Square { x: 1, y: 0 }, Piece::new(PieceType::Knight, Color::White));
+        pieces.insert(Square { x: 2, y: 0 }, Piece::new(PieceType::Bishop, Color::White));
+        pieces.insert(Square { x: 3, y: 0 }, Piece::new(PieceType::Queen, Color::White));
+        pieces.insert(Square { x: 4, y: 0 }, Piece::new(PieceType::King, Color::White));
+        pieces.insert(Square { x: 5, y: 0 }, Piece::new(PieceType::Bishop, Color::White));
+        pieces.insert(Square { x: 6, y: 0 }, Piece::new(PieceType::Knight, Color::White));
+        pieces.insert(Square { x: 7, y: 0 }, Piece::new(PieceType::Rook, Color::White));
+        pieces.insert(Square { x: 0, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 1, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 2, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 3, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 4, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 5, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 6, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+        pieces.insert(Square { x: 7, y: 1 }, Piece::new(PieceType::Pawn, Color::White));
+
+        // Set up black pieces
+        pieces.insert(Square { x: 0, y: 7 }, Piece::new(PieceType::Rook, Color::Black));
+        pieces.insert(Square { x: 1, y: 7 }, Piece::new(PieceType::Knight, Color::Black));
+        pieces.insert(Square { x: 2, y: 7 }, Piece::new(PieceType::Bishop, Color::Black));
+        pieces.insert(Square { x: 3, y: 7 }, Piece::new(PieceType::Queen, Color::Black));
+        pieces.insert(Square { x: 4, y: 7 }, Piece::new(PieceType::King, Color::Black));
+        pieces.insert(Square { x: 5, y: 7 }, Piece::new(PieceType::Bishop, Color::Black));
+        pieces.insert(Square { x: 6, y: 7 }, Piece::new(PieceType::Knight, Color::Black));
+        pieces.insert(Square { x: 7, y: 7 }, Piece::new(PieceType::Rook, Color::Black));
+        pieces.insert(Square { x: 0, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 1, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 2, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 3, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 4, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 5, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 6, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        pieces.insert(Square { x: 7, y: 6 }, Piece::new(PieceType::Pawn, Color::Black));
+        Board { pieces }
+    }
+
+    pub fn get_piece(&self, square: &Square) -> Option<&Piece> {
+        self.pieces.get(square)
+    }
+
+    pub fn move_piece(&mut self, start: &Square, end: &Square) -> Result<(), ChessError> {
+        let piece = self.get_piece(start).ok_or(ChessError::NoPiece)?;
+
+        if !piece.can_move(start, end, &self) {
+            return Err(ChessError::InvalidMove);
+        }
+
+        let captured_piece = self.get_piece(end);
+
+        self.pieces.remove(start);
+        self.pieces.insert(*end, *piece);
+
+        if let Some(captured_piece) = captured_piece {
+            if captured_piece.color != piece.color {
+                // Captured piece is of opposite color
+                return Ok(());
+            }
+        }
+
+        Err(ChessError::IllegalCapture)
+    }
+}
+route.rs:
+use actix_web::{web, HttpResponse, Result};
+use actix_web::web::{Json, Data};
+use std::sync::{Arc, Mutex};
+
+use crate::board::{Board, Color, Piece};
+use crate::move_logic;
+use crate::websocket;
+
+// Route: Create a new game
+pub async fn new_game(board: Data<Arc<Mutex<Board>>>) -> Result<HttpResponse> {
+    let mut board = board.lock().unwrap();
+    *board = Board::new();
+    board.initialize_pieces();
+    Ok(HttpResponse::Ok().json("New game created"))}
+
+// Route: Make a move
+pub async fn make_move(
+    board: Data<Arc<Mutex<Board>>>,
+    move_data: Json<move_logic::MoveData>,
+) -> Result<HttpResponse> {
+    let mut board = board.lock().unwrap();
+    let is_valid_move = move_logic::is_valid_move(&board, &move_data);
+
+    if is_valid_move {
+        move_logic::execute_move(&mut board, &move_data);
+        Ok(HttpResponse::Ok().json("Move executed"))
+    } else {
+        Ok(HttpResponse::BadRequest().json("Invalid move"))
+    }
+}
+
+// Route: Get the current state of the game
+pub async fn get_game_state(board: Data<Arc<Mutex<Board>>>) -> Result<HttpResponse> {
+    let board = board.lock().unwrap();
+    Ok(HttpResponse::Ok().json(&*board))
+}
+
+// Route: Join a websocket connection
+pub async fn ws_index(
+    board: Data<Arc<Mutex<Board>>>,
+    stream: web::Payload,
+) -> Result<HttpResponse> {
+    let board = board.lock().unwrap();
+    websocket::websocket_handler(stream, board.clone()).await
+}
+
+// Configures the application routes
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/api")
+            .route("/new_game", web::post().to(new_game))
+            .route("/make_move", web::post().to(make_move))
+            .route("/get_game_state", web::get().to(get_game_state))
+            .route("/ws", web::get().to(ws_index)),
+    );
+}
+
+websocket.rs:
+use actix::{Actor, StreamHandler};
+use actix_web::{web, Error, HttpRequest, HttpResponse};
+use actix_web_actors::ws;
+use std::sync::{Arc, Mutex};
+
+use crate::board::Board;
+
+// Define the WebSocket connection handler
+pub struct ChessWs {
+    board: Arc<Mutex<Board>>,
+}
+
+impl ChessWs {
+    // Constructor for the ChessWs struct
+    pub fn new(board: Arc<Mutex<Board>>) -> Self {
+        ChessWs { board }
+    }
+}
+
+// Implement the Actor trait for the ChessWs struct
+impl Actor for ChessWs {
+    type Context = ws::WebsocketContext<Self>;
+}
+
+// Implement the StreamHandler trait for the ChessWs struct to handle incoming messages
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for ChessWs {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                // Respond to Ping messages with a Pong message
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Text(text)) => {
+                // Handle incoming text messages and broadcast the received message to all connected clients
+                let board = self.board.lock().unwrap();
+                ctx.text(format!("Current game state: {:?}", *board));
+            }
+            Ok(ws::Message::Binary(bin)) => {
+// If you need to handle binary data, you can do it here
+                ctx.binary(bin);
+            }
+            Ok(ws::Message::Close(reason)) => {
+// Handle WebSocket connection closing
+                ctx.close(reason);
+                ctx.stop();
+            }
+            Ok(ws::Message::Nop) => {}
+            Err(_) => {
+// Handle errors
+                ctx.stop();
+            }
+        }
+    }
+}
+
+// The websocket_handler function initializes the WebSocket connection by upgrading the HTTP request
+// and initializing the ChessWs actor with the shared board state.
+pub async fn websocket_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    board: web::Data<Arc<Mutex<Board>>>,
+) -> Result<HttpResponse, Error> {
+    let board = board.lock().unwrap();
+    let chess_ws = ChessWs::new(board.clone());
+    ws::start(chess_ws, &req, stream)
+}
+piece.rs:
+use crate::board::{Board, Square};
+use std::collections::HashSet;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PieceType {
+    King,
+    Queen,
+    Rook,
+    Bishop,
+    Knight,
+    Pawn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Color {
+    White,
+    Black,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Piece {
+    pub piece_type: PieceType,
+    pub color: Color,
+}
+
+impl Piece {
+    // Constructor for the Piece struct
+    pub fn new(piece_type: PieceType, color: Color) -> Self {
+        Piece { piece_type, color }
+    }
+
+    // Check if the piece can move from the start square to the end square on the given board
+    pub fn can_move(&self, start: &Square, end: &Square, board: &Board) -> bool {
+        // Get the set of valid moves for the piece at the start square
+        let valid_moves = self.get_valid_moves(start, board);
+
+        // Check if the end square is in the set of valid moves
+        valid_moves.contains(end)
+    }
+
+    // Get the set of valid moves for the piece at the given square on the board
+    pub fn get_valid_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        match self.piece_type {
+            PieceType::King => self.get_king_moves(square, board),
+            PieceType::Queen => self.get_queen_moves(square, board),
+            PieceType::Rook => self.get_rook_moves(square, board),
+            PieceType::Bishop => self.get_bishop_moves(square, board),
+            PieceType::Knight => self.get_knight_moves(square, board),
+            PieceType::Pawn => self.get_pawn_moves(square, board),
+        }
+    }
+    // Get the set of valid moves for the king at the given square on the board
+    fn get_king_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        let mut moves = HashSet::new();
+        // The king can move one square in any direction: horizontally, vertically, and diagonally.
+// We will use a loop to check all 8 adjacent squares.
+        for row_diff in -1..=1 {
+            for col_diff in -1..=1 {
+                // Skip the current square (0, 0)
+                if row_diff == 0 && col_diff == 0 {
+                    continue;
+                }
+
+                let new_row = square.row as i32 + row_diff;
+                let new_col = square.col as i32 + col_diff;
+
+                // Check if the new position is within the board bounds
+                if Board::is_in_bounds(new_row, new_col) {
+                    let new_square = Square::new(new_row as usize, new_col as usize);
+
+                    // Check if the new square is empty or contains an opponent's piece
+                    if let Some(piece) = board.get_piece(&new_square) {
+                        if piece.color != self.color {
+                            moves.insert(new_square);
+                        }
+                    } else {
+                        moves.insert(new_square);
+                    }
+                }
+            }
+        }
+        moves
+    }
+
+    // Get the set of valid moves for the queen at the given square on the board
+    fn get_queen_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        let mut moves = HashSet::new();
+    }
+
+    // Get the set of valid moves for the rook at the given square on the board
+    fn get_rook_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        // TODO: Implement rook moves logic
+        HashSet::new()
+    }
+
+    // Get the set of valid moves for the bishop at the given square on the board
+    fn get_bishop_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        // TODO: Implement bishop moves logic
+        HashSet::new()
+    }
+
+    // Get the set of valid moves for the knight at the given square on the board
+    fn get_knight_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+        // TODO: Implement knight moves logic
+        HashSet::new()
+    }
+
+    // Get the set of valid moves for the pawn at the given square on the board
+    fn get_pawn_moves(&self, square: &Square, board: &Board) -> HashSet<Square> {
+// TODO: Implement pawn moves logic
+        HashSet::new()
+    }
+}
+
+
